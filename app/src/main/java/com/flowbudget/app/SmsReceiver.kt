@@ -1,33 +1,19 @@
 package com.flowbudget.app
-
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.provider.Telephony
-
-class SmsReceiver: BroadcastReceiver() {
- override fun onReceive(context:Context,intent:Intent) {
-  if(intent.action!=Telephony.Sms.Intents.SMS_RECEIVED_ACTION)return
-  val store=FinanceStore(context); val allowed=store.allowedSenders()
-  Telephony.Sms.Intents.getMessagesFromIntent(intent).groupBy{it.originatingAddress.orEmpty()}.forEach{(sender,parts)->
-   val normalized=sender.trim().uppercase()
-   if(allowed.none{normalized==it || normalized.contains(it)}) return@forEach
-   val body=parts.joinToString(""){it.messageBody.orEmpty()}
-   BankSmsParser.parse(body,sender)?.let(store::add)
-  }
- }
+import android.provider.Telephony.Sms
+import android.net.Uri
+data class SmsSender(val address:String,val sample:String,val count:Int)
+class SmsReceiver:BroadcastReceiver(){override fun onReceive(context:Context,intent:Intent){if(intent.action!=Telephony.Sms.Intents.SMS_RECEIVED_ACTION)return;val store=FinanceStore(context);val allowed=store.allowedSenders();Telephony.Sms.Intents.getMessagesFromIntent(intent).groupBy{it.originatingAddress.orEmpty()}.forEach{(sender,parts)->if(!senderAllowed(sender,allowed))return@forEach;BankSmsParser.parse(parts.joinToString(""){it.messageBody.orEmpty()},sender,System.currentTimeMillis())?.let{store.addIfNew(it)}}}}
+fun senderAllowed(sender:String,allowed:Set<String>):Boolean{val n=sender.filterNot{it.isWhitespace()}.uppercase();return allowed.any{a->val x=a.filterNot{it.isWhitespace()}.uppercase();n==x||n.contains(x)||x.contains(n)}}
+object SmsImporter{
+ fun discover(context:Context):List<SmsSender>{val map=linkedMapOf<String,MutableList<String>>();context.contentResolver.query(Uri.parse("content://sms/inbox"),arrayOf(Sms.ADDRESS,Sms.BODY),null,null,"date DESC")?.use{c->val ai=c.getColumnIndex(Sms.ADDRESS);val bi=c.getColumnIndex(Sms.BODY);var seen=0;while(c.moveToNext()&&seen<800){val a=c.getString(ai).orEmpty();val b=c.getString(bi).orEmpty();if(BankSmsParser.looksFinancial(b)){map.getOrPut(a){mutableListOf()}.add(b);seen++}}};return map.map{SmsSender(it.key,it.value.first().take(90),it.value.size)}.sortedByDescending{it.count}}
+ fun importAllowed(context:Context,store:FinanceStore):Int{var added=0;val allowed=store.allowedSenders();context.contentResolver.query(Uri.parse("content://sms/inbox"),arrayOf(Sms.ADDRESS,Sms.BODY,Sms.DATE),null,null,"date DESC")?.use{c->val ai=c.getColumnIndex(Sms.ADDRESS);val bi=c.getColumnIndex(Sms.BODY);val di=c.getColumnIndex(Sms.DATE);while(c.moveToNext()){val a=c.getString(ai).orEmpty();if(!senderAllowed(a,allowed))continue;BankSmsParser.parse(c.getString(bi).orEmpty(),a,c.getLong(di))?.let{if(store.addIfNew(it))added++}}};return added}
 }
-object BankSmsParser {
- private val amount=Regex("""(?i)(?:NGN|₦|N)\s*([0-9][0-9,]*(?:\.\d{1,2})?)""")
- fun parse(body:String,sender:String):Transaction? {
-  val lower=body.lowercase()
-  val type=when {
-   Regex("""\b(debit|debited|dr)\b""",RegexOption.IGNORE_CASE).containsMatchIn(body)->TxType.EXPENSE
-   Regex("""\b(credit|credited|cr)\b""",RegexOption.IGNORE_CASE).containsMatchIn(body)->TxType.INCOME
-   else->return null
-  }
-  val value=amount.find(body)?.groupValues?.get(1)?.replace(",","")?.toDoubleOrNull()?:return null
-  val category=if(type==TxType.INCOME)"Bank Credit" else when {"airtime" in lower || "data" in lower -> "Airtime & Data"; "pos" in lower -> "Shopping"; "transfer" in lower -> "Transfer"; else -> "Bank Debit"}
-  return Transaction(type=type,amount=value,category=category,note="Imported from bank alert",source="SMS • "+sender)
- }
+object BankSmsParser{
+ private val aps=listOf(Regex("""(?i)(?:NGN|₦)\s*([0-9][0-9,]*(?:\.\d{1,2})?)"""),Regex("""(?i)\bN\s*([0-9][0-9,]*(?:\.\d{1,2})?)"""),Regex("""(?i)(?:amount|amt)[:\s]*(?:NGN|₦|N)?\s*([0-9][0-9,]*(?:\.\d{1,2})?)"""))
+ fun looksFinancial(body:String):Boolean{val l=body.lowercase();return aps.any{it.containsMatchIn(body)}&&listOf("debit","credit","debited","credited","transaction","balance","transfer","pos","withdraw").any{it in l}}
+ fun parse(body:String,sender:String,time:Long):Transaction?{val l=body.lowercase();val type=when{Regex("""\b(debit|debited|dr|withdrawal|withdrawn|purchase)\b""",RegexOption.IGNORE_CASE).containsMatchIn(body)->TxType.EXPENSE;Regex("""\b(credit|credited|cr|deposit)\b""",RegexOption.IGNORE_CASE).containsMatchIn(body)->TxType.INCOME;else->return null};val value=aps.firstNotNullOfOrNull{it.find(body)?.groupValues?.getOrNull(1)?.replace(",","")?.toDoubleOrNull()}?:return null;val category=if(type==TxType.INCOME)"Income" else when{"airtime" in l||"data" in l->"Airtime & Data";"pos" in l||"purchase" in l->"Shopping";"transfer" in l->"Transfer";"atm" in l||"withdraw" in l->"Cash";else->"Bank Debit"};return Transaction(type=type,amount=value,category=category,note=body.take(100),timestamp=time,source="SMS • "+sender)}
 }
