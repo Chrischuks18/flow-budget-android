@@ -1,4 +1,4 @@
-name: Android Debug APK
+name: Android 12+ Test APK
 on:
   push:
     branches: [ main ]
@@ -15,9 +15,15 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
-      - name: Build debug APK
-        run: gradle assembleDebug
+      - name: Build Android 12+ APK
+        run: gradle clean assembleDebug
+      - name: Verify APK exists
+        run: |
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          ls -lh app/build/outputs/apk/debug/app-debug.apk
+      - name: Rename APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk Flow-Budget-Android12Plus-v0.2.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: flow-budget-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: Flow-Budget-Android12Plus-v0.2
+          path: Flow-Budget-Android12Plus-v0.2.apk
