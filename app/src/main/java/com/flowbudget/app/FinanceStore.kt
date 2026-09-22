@@ -11,7 +11,7 @@ class FinanceStore(context:Context){
  fun addIfNew(t:Transaction):Boolean{val key=t.type.toString()+"|"+t.amount+"|"+(t.timestamp/60000)+"|"+t.source;if(transactions().any{it.type.toString()+"|"+it.amount+"|"+(it.timestamp/60000)+"|"+it.source==key})return false;add(t);return true}
  fun allowedSenders():Set<String> = prefs.getStringSet("senders",emptySet()).orEmpty()
  fun addSender(s:String){val x=allowedSenders().toMutableSet();x.add(s.trim().uppercase());prefs.edit().putStringSet("senders",x).apply()}
- fun removeSender(s:String){val x=allowedSenders().toMutableSet();x.remove(s);prefs.edit().putStringSet("senders",x).apply()}
+ fun removeSender(s:String){val x=allowedSenders().toMutableSet();val key=s.trim().uppercase();x.removeAll{it.trim().uppercase()==key};prefs.edit().putStringSet("senders",x).apply()}
  fun budget():Double=prefs.getFloat("budget",200000f).toDouble()
  fun setBudget(v:Double){prefs.edit().putFloat("budget",v.toFloat()).apply()}
  fun premium():Boolean=prefs.getBoolean("premium",false)
