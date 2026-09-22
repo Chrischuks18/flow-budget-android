@@ -49,6 +49,7 @@ class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:
  val scheme=if(dark) darkColorScheme(primary=sky,onPrimary=deep,primaryContainer=Color(0xFF17394B),onPrimaryContainer=milk,secondary=Color(0xFFFFD36A),onSecondary=deep,secondaryContainer=Color(0xFF29495B),onSecondaryContainer=milk,background=Color(0xFF071116),surface=Color(0xFF101D24),surfaceVariant=Color(0xFF17303D),onBackground=milk,onSurface=milk,onSurfaceVariant=Color(0xFFE5EDF0)) else lightColorScheme(primary=Emerald,secondary=Gold,background=Soft,surface=Color.White,onBackground=Navy,onSurface=Navy,primaryContainer=Color(0xFFDDF4FF),onPrimaryContainer=Navy,secondaryContainer=Color(0xFFFFF0BF),onSecondaryContainer=Navy)
  MaterialTheme(colorScheme=scheme){content()}
 }
+object ThemeBus{var mode:String="SYSTEM";var change:(String)->Unit={}}
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable fun FlowBudgetApp(store:FinanceStore){
  var route by remember{mutableStateOf("Home")};var refresh by remember{mutableIntStateOf(0)};var addNow by remember{mutableStateOf(false)};val tx=remember(refresh){store.transactions()};val premium=remember(refresh){store.premium()};if(!premium&&route=="Analyze")route="Plus";val inc=tx.filter{it.type==TxType.INCOME}.sumOf{it.amount};val exp=tx.filter{it.type==TxType.EXPENSE}.sumOf{it.amount};val drawer=rememberDrawerState(DrawerValue.Closed);val scope=rememberCoroutineScope()
