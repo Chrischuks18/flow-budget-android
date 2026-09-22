@@ -1,6 +1,8 @@
 package com.flowbudget.app
 import android.content.Context
 import java.util.UUID
+import org.json.JSONArray
+import org.json.JSONObject
 enum class TxType{INCOME,EXPENSE}
 data class Transaction(val id:String=UUID.randomUUID().toString(),val type:TxType,val amount:Double,val category:String,val note:String,val timestamp:Long=System.currentTimeMillis(),val source:String="Manual",val bank:String="Manual",val account:String="General")
 data class FutureExpense(val id:String=UUID.randomUUID().toString(),val title:String,val amount:Double,val dueAt:Long,val account:String="All accounts",val reminder:Boolean=true)
@@ -27,5 +29,28 @@ class FinanceStore(context:Context){
  private fun encode(t:Transaction)=listOf(t.id,t.type.name,t.amount.toString(),clean(t.category),clean(t.note),t.timestamp.toString(),clean(t.source),clean(t.bank),clean(t.account)).joinToString("¦")
  private fun decode(s:String):Transaction?=runCatching{val p=s.split("¦");Transaction(p[0],TxType.valueOf(p[1]),p[2].toDouble(),p[3],p[4],p[5].toLong(),p[6],p.getOrElse(7){bankFromSource(p[6])},p.getOrElse(8){"General"})}.getOrNull()
  private fun bankFromSource(s:String)=s.substringAfter("SMS • ","Manual")
+ fun exportBackup():String{
+  val root=JSONObject();root.put("format","FlowBudgetBackup");root.put("version",1);root.put("createdAt",System.currentTimeMillis())
+  val data=JSONObject()
+  prefs.all.forEach{(k,v)->when(v){
+   is String->data.put(k,JSONObject().put("type","string").put("value",v))
+   is Boolean->data.put(k,JSONObject().put("type","boolean").put("value",v))
+   is Float->data.put(k,JSONObject().put("type","float").put("value",v.toDouble()))
+   is Int->data.put(k,JSONObject().put("type","int").put("value",v))
+   is Long->data.put(k,JSONObject().put("type","long").put("value",v))
+   is Set<*>->{val a=JSONArray();v.filterIsInstance<String>().forEach{a.put(it)};data.put(k,JSONObject().put("type","strings").put("value",a))}
+  }}
+  root.put("data",data);return root.toString(2)
+ }
+ fun importBackup(raw:String):Int{
+  val root=JSONObject(raw);require(root.optString("format")=="FlowBudgetBackup"){"This is not a Flow Budget backup file."}
+  val data=root.getJSONObject("data");val e=prefs.edit().clear();var restored=0
+  val keys=data.keys();while(keys.hasNext()){val k=keys.next();val item=data.getJSONObject(k);when(item.getString("type")){
+   "string"->e.putString(k,item.getString("value"));"boolean"->e.putBoolean(k,item.getBoolean("value"))
+   "float"->e.putFloat(k,item.getDouble("value").toFloat());"int"->e.putInt(k,item.getInt("value"))
+   "long"->e.putLong(k,item.getLong("value"));"strings"->{val a=item.getJSONArray("value");val s=mutableSetOf<String>();for(i in 0 until a.length())s.add(a.getString(i));e.putStringSet(k,s)}
+  };restored++}
+  check(e.commit()){"The backup could not be saved on this device."};return restored
+ }
  private fun clean(s:String)=s.replace("¦"," ")
 }
