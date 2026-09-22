@@ -12,19 +12,19 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
       - name: Build debug APK
         run: gradle clean assembleDebug
-      - name: Locate Android build tools
+      - name: Locate installed Android build tools
         id: tools
         shell: bash
         run: |
           BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           echo "dir=$BUILD_TOOLS" >> "$GITHUB_OUTPUT"
-      - name: Verify APK structure and manifest
+          echo "Using $BUILD_TOOLS"
+      - name: Verify APK ZIP and manifest
         shell: bash
         run: |
           APK=app/build/outputs/apk/debug/app-debug.apk
@@ -36,7 +36,7 @@ jobs:
         run: |
           APK=app/build/outputs/apk/debug/app-debug.apk
           "${{ steps.tools.outputs.dir }}/apksigner" verify --verbose --print-certs "$APK"
-      - name: Prepare direct APK
+      - name: Prepare APK
         run: |
           cp app/build/outputs/apk/debug/app-debug.apk FlowBudget-v0.2.1-Android12Plus.apk
           sha256sum FlowBudget-v0.2.1-Android12Plus.apk > FlowBudget-v0.2.1-SHA256.txt
