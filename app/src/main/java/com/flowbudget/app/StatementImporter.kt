@@ -40,25 +40,30 @@ object StatementImporter{
   return when{
    type==TxType.INCOME&&has("salary","payroll","wage","allowance","stipend")->"Salary & Allowance"
    type==TxType.INCOME&&has("refund","reversal","reversed","chargeback")->"Refunds & Reversals"
-   type==TxType.INCOME&&has("interest","dividend","investment return")->"Investment Income"
-   has("mtn","airtel","glo","9mobile","airtime","data bundle","data purchase")->"Airtime & Data"
-   has("uber","bolt","indrive","taxi","transport","bus ticket","flight","air peace","arik","fuel","petrol","diesel","filling station","total energies","nnpc","mobil station")->"Transport & Fuel"
-   has("restaurant","eatery","cafe","coffee","chicken republic","kfc","dominos","pizza","food","grocer","supermarket","shoprite","market","provision")->"Food & Groceries"
+   type==TxType.INCOME&&has("interest credit","capitalized interest","dividend","investment return")->"Investment Income"
+   has("commission","charge + vat","nip charge","sms alert charge","sms charge","stamp duty","witholding tax","withholding tax","maintenance fee","account maintenance","transfer fee","transaction fee","bank charge","vat mobile trf","fgn stamp")->"Bank Charges"
+   has("mtn","airtel","glo","9mobile","airtime","data bundle","data purchase","mobile bills pymt")->"Airtime & Data"
+   has("lab test","treatment","medication","hospital","clinic","pharmacy","chemist","medical","laboratory","health")->"Health & Medical"
+   has("fuel","fueling","petrol","diesel","uber","bolt","indrive","taxi","transport","bus ticket","flight","air peace","arik","filling station","total energies","nnpc")->"Transport & Fuel"
+   has("food","moimoi","pop corn","popcorn","groc","grocery","grocer","restaurant","eatery","cafe","coffee","chicken republic","kfc","dominos","pizza","supermarket","shoprite","provision")->"Food & Groceries"
+   has("duplex printer","printer","toner","rj45","office tv","ipad","computer","laptop","router","headlamp")->"Office & Equipment"
+   has("blocks","fillers","lectern","beautification","tanker paymt for water","building material","cement","paint","construction","renovation")->"Building & Maintenance"
+   has("haircut","perfume","shoes","sports wear","sports canvas","boutique","clothing","fashion","salon")->"Personal Care & Clothing"
+   has("mass booking","burial levy","chipins","church","parish","tithe","offering","donation","charity")->"Church & Giving"
+   has("wedding","thanks for coming","thank you for coming","event","ceremony")->"Events & Hospitality"
+   has("up keep","upkeep","family support")->"Family & Support"
    has("ikeja electric","ikedc","eko electric","ekedc","eedc","enugu electricity","nepa","electricity","prepaid meter","water bill","utility","dstv","gotv","startimes","internet bill","wifi")->"Bills & Utilities"
-   has("netflix","spotify","youtube premium","apple com bill","google storage","prime video","showmax","subscription","renewal")->"Subscriptions"
-   has("hospital","clinic","pharmacy","chemist","medical","laboratory","lab test","health")->"Health & Medical"
+   has("netflix","spotify","youtube premium","apple com bill","google storage","prime video","showmax","subscription","renewal"," sub ")->"Subscriptions"
    has("school fees","tuition","university","college","academy","course","exam fee","waec","jamb")->"Education"
    has("hotel","guest house","booking com","airbnb","lodge")->"Travel & Accommodation"
-   has("church","parish","tithe","offering","donation","charity")->"Giving & Donations"
    has("rent","landlord","house rent","accommodation rent")->"Rent & Housing"
    has("insurance","premium payment")->"Insurance"
    has("atm withdrawal","cash withdrawal","cash wd","withdrawal at atm")->"Cash Withdrawal"
-   has("stamp duty","sms alert charge","maintenance fee","account maintenance","transfer fee","transaction fee","bank charge","vat on fee","levy")->"Bank Charges"
    has("bet9ja","sportybet","betking","betway","gaming")->"Betting & Gaming"
-   has("pos","web purchase","card purchase","merchant payment","purchase at","shopping","boutique","store")->"Shopping & POS"
    has("loan repayment","loan payment","credit repayment")->"Loan Repayment"
    has("investment","mutual fund","treasury bill","stock purchase")->"Savings & Investments"
-   has("transfer","trf","nip","nibss","sent to","payment to","fund transfer")->if(type==TxType.INCOME)"Transfers In" else "Transfers Out"
+   has("pos","web purchase","card purchase","merchant payment","purchase at","shopping","store")->"Shopping & POS"
+   has("transfer","trf","nip","nibss","sent to","payment to","fund transfer","onb trf","mobile trf")->if(type==TxType.INCOME)"Transfers In" else "Transfers Out"
    type==TxType.INCOME->"Other Income"
    else->"Other Expense"
   }
@@ -70,20 +75,61 @@ object StatementImporter{
   return if(found!=null) found.split(" ").joinToString(" "){it.replaceFirstChar(Char::uppercaseChar)} else clean.take(90).ifBlank{category}
  }
  private fun num(s:String)=s.replace(Regex("[^0-9.\\-]"),"").toDoubleOrNull()?:0.0
- private fun parseDate(s:String):Long{for(f in listOf("dd/MM/yyyy","dd-MM-yyyy","yyyy-MM-dd","dd MMM yyyy","MMM dd, yyyy"))runCatching{return SimpleDateFormat(f,Locale.US).parse(s)?.time?:System.currentTimeMillis()};return System.currentTimeMillis()}
+ private fun parseDate(s:String):Long{for(f in listOf("dd/MM/yyyy","dd-MM-yyyy","dd-MMM-yy","dd/MM/yy","dd-MM-yy","yyyy-MM-dd","dd MMM yyyy","MMM dd, yyyy"))runCatching{return SimpleDateFormat(f,Locale.US).parse(s)?.time?:System.currentTimeMillis()};return System.currentTimeMillis()}
  private fun split(line:String,sep:Char):List<String>{val out=mutableListOf<String>();val b=StringBuilder();var q=false;line.forEach{ch->when{ch=='"'->q=!q;ch==sep&&!q->{out+=b.toString();b.clear()};else->b.append(ch)}};out+=b.toString();return out}
  private fun queryName(c:Context,u:Uri):String{var n="statement.csv";c.contentResolver.query(u,null,null,null,null)?.use{cur->val i=cur.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);if(i>=0&&cur.moveToFirst())n=cur.getString(i)};return n}
  private fun importPdf(context:Context,uri:Uri,store:FinanceStore):Result{
   PDFBoxResourceLoader.init(context);val name=queryName(context,uri);val bytes=context.contentResolver.openInputStream(uri)?.readBytes()?:return Result(0,0,"Could not read PDF.")
-  val text=PDDocument.load(bytes).use{PDFTextStripper().getText(it)};val bank=detectBank(name+" "+text.take(2500));val account=detectAccount(text)
-  var imported=0;var skipped=0
-  val dateRx=Regex("""\b(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}|\d{1,2}\s+[A-Za-z]{3}\s+\d{4})\b""")
-  val amountRx=Regex("""(?:NGN|₦|N)?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d{2})|[0-9]+\.\d{2})""",RegexOption.IGNORE_CASE)
-  text.lines().forEach{raw->val line=raw.trim();val dm=dateRx.find(line)?:return@forEach;val amounts=amountRx.findAll(line).mapNotNull{num(it.groupValues[1]).takeIf{x->x>0}}.toList();if(amounts.isEmpty())return@forEach
-   val narration=line.replace(dm.value,"").replace(amountRx," ").replace(Regex("\\s+")," ").trim();val lower=line.lowercase();val type=when{Regex("\\b(cr|credit|credited|deposit)\\b").containsMatchIn(lower)->TxType.INCOME;Regex("\\b(dr|debit|debited|withdrawal|purchase|pos)\\b").containsMatchIn(lower)->TxType.EXPENSE;else->TxType.EXPENSE};val value=amounts.first()
-   val t=Transaction(type=type,amount=value,category=purpose(narration,type),note=narration.ifBlank{"PDF statement transaction"},timestamp=parseDate(dm.value),source="Statement • "+name,bank=bank,account=account)
-   if(store.addIfNew(t))imported++ else skipped++}
-  return Result(imported,skipped,"PDF analyzed: "+imported+" transactions imported. Review the Activity page to verify automatically interpreted rows.",bank,account)
+  val text=PDDocument.load(bytes).use{doc->PDFTextStripper().apply{sortByPosition=true}.getText(doc)}
+  val bank=detectBank(name+" "+text.take(4000));val account=detectAccount(text)
+  val dateStart=Regex("""^\s*(\d{1,2}[/\-](?:\d{1,2}|[A-Za-z]{3})[/\-]\d{2,4})\b""",RegexOption.IGNORE_CASE)
+  val moneyRx=Regex("""(?<!\d)(?:NGN|₦)?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d{2})|[0-9]+\.\d{2})(?!\d)""",RegexOption.IGNORE_CASE)
+  val lines=text.lines().map{it.trim()}.filter{it.isNotBlank()}
+  val blocks=mutableListOf<Pair<String,StringBuilder>>();var current:StringBuilder?=null;var currentDate=""
+  for(line in lines){val m=dateStart.find(line);if(m!=null){currentDate=m.groupValues[1];current=StringBuilder(line);blocks+=currentDate to current}else if(current!=null&&!isPdfFooter(line)){current.append(" ").append(line)}}
+  val opening=findOpeningBalance(text,moneyRx);var previousBalance=opening;var imported=0;var skipped=0
+  for((date,buf) in blocks){
+   val raw=buf.toString().replace(Regex("\\s+")," ").trim()
+   if(raw.contains("TOTALS",true)||raw.contains("TOTAL (CLEARED",true))continue
+   val values=moneyRx.findAll(raw).mapNotNull{m->num(m.groupValues[1]).takeIf{it>=0}}.toList()
+   if(values.isEmpty()){skipped++;continue}
+   val balance=values.last()
+   var type:TxType?=null;var amount=0.0
+   if(previousBalance!=null){
+    val delta=balance-previousBalance
+    if(kotlin.math.abs(delta)>=0.005){type=if(delta>0)TxType.INCOME else TxType.EXPENSE;amount=kotlin.math.abs(delta)}
+   }
+   if(type==null||amount<=0){
+    val lower=raw.lowercase()
+    type=when{
+     bank=="Fidelity Bank"&&Regex("""\b(pay in|credit)\b""").containsMatchIn(lower)->TxType.INCOME
+     lower.contains("capitalized interest credit")||lower.contains("trf from")||lower.contains("credited")->TxType.INCOME
+     else->TxType.EXPENSE
+    }
+    amount=values.dropLast(1).firstOrNull{it>0}?:0.0
+   }
+   previousBalance=balance
+   if(amount<=0||raw.contains("opening balance",true)){continue}
+   val narration=cleanPdfNarration(raw,date,moneyRx).ifBlank{"Statement transaction"}
+   val t=Transaction(type=type,amount=amount,category=purpose(narration,type),note=narration,timestamp=parseDate(date),source="Statement • "+name,bank=bank,account=account)
+   if(store.addIfNew(t))imported++ else skipped++
+  }
+  val layout=when(bank){"Access Bank"->"Access Debit/Credit";"Fidelity Bank"->"Fidelity Pay In/Pay Out";"Zenith Bank"->"Zenith Debit/Credit";else->"balance-aware"}
+  return Result(imported,skipped,bank+" PDF analyzed with "+layout+" parsing: "+imported+" transactions imported. Narrations were retained for spending analysis.",bank,account)
+ }
+ private fun findOpeningBalance(text:String,moneyRx:Regex):Double?{
+  val r=Regex("""(?i)opening\s+balance\s*[:\-]?\s*(?:NGN|₦)?\s*([0-9,]+\.\d{2})""").find(text)
+  if(r!=null)return num(r.groupValues[1])
+  val line=text.lines().firstOrNull{it.contains("Opening Balance",true)}?:return null
+  return moneyRx.findAll(line).map{num(it.groupValues[1])}.lastOrNull()
+ }
+ private fun isPdfFooter(line:String):Boolean{val s=line.lowercase();return s.matches(Regex("""\d+\s+of\s+\d+"""))||s.contains("alertz verification")||s.contains("how to verify")}
+ private fun cleanPdfNarration(raw:String,date:String,moneyRx:Regex):String{
+  var s=raw.replaceFirst(date,"").trim()
+  s=s.replace(Regex("""^\s*\d{1,2}[/\-](?:\d{1,2}|[A-Za-z]{3})[/\-]\d{2,4}\s*""",RegexOption.IGNORE_CASE),"")
+  val matches=moneyRx.findAll(s).toList()
+  if(matches.size>=2){val cut=matches[matches.size-2].range.first;s=s.substring(0,cut)}
+  return s.replace(Regex("""(?i)\b(NIP Transfer|Online Banking|Others)\b""")," ").replace(Regex("\\s+")," ").trim(' ','-','|')
  }
  private fun importXlsx(context:Context,uri:Uri,store:FinanceStore):Result{
   val name=queryName(context,uri);val bytes=context.contentResolver.openInputStream(uri)?.readBytes()?:return Result(0,0,"Could not read Excel file.");val entries=mutableMapOf<String,ByteArray>();ZipInputStream(ByteArrayInputStream(bytes)).use{z->var e=z.nextEntry;while(e!=null){if(!e.isDirectory)entries[e.name]=z.readBytes();e=z.nextEntry}}
