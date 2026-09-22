@@ -16,6 +16,8 @@ class FinanceStore(context:Context){
  fun setBudget(v:Double){prefs.edit().putFloat("budget",v.toFloat()).apply()}
  fun premium():Boolean=prefs.getBoolean("premium",false)
  fun setPremium(v:Boolean){prefs.edit().putBoolean("premium",v).apply()}
+ fun themeMode():String=prefs.getString("theme_mode","SYSTEM")?:"SYSTEM"
+ fun setThemeMode(v:String){prefs.edit().putString("theme_mode",v).apply()}
  fun futureExpenses():List<FutureExpense> = prefs.getStringSet("future",emptySet()).orEmpty().mapNotNull(::decodeFuture).sortedBy{it.dueAt}
  fun addFuture(f:FutureExpense){val s=prefs.getStringSet("future",emptySet()).orEmpty().toMutableSet();s.add(listOf(f.id,clean(f.title),f.amount.toString(),f.dueAt.toString(),clean(f.account),f.reminder.toString()).joinToString("¦"));prefs.edit().putStringSet("future",s).apply()}
  fun removeFuture(id:String){val s=prefs.getStringSet("future",emptySet()).orEmpty().filterNot{it.startsWith(id+"¦")}.toSet();prefs.edit().putStringSet("future",s).apply()}
