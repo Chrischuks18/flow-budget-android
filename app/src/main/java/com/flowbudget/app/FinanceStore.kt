@@ -20,6 +20,8 @@ class FinanceStore(context:Context){
  fun setThemeMode(v:String){prefs.edit().putString("theme_mode",v).apply()}
  fun futureExpenses():List<FutureExpense> = prefs.getStringSet("future",emptySet()).orEmpty().mapNotNull(::decodeFuture).sortedBy{it.dueAt}
  fun addFuture(f:FutureExpense){val s=prefs.getStringSet("future",emptySet()).orEmpty().toMutableSet();s.add(listOf(f.id,clean(f.title),f.amount.toString(),f.dueAt.toString(),clean(f.account),f.reminder.toString()).joinToString("¦"));prefs.edit().putStringSet("future",s).apply()}
+ fun savingsGoals():List<SavingsGoal> = prefs.getStringSet("goals",emptySet()).orEmpty().mapNotNull{runCatching{val p=it.split("¦");SavingsGoal(p[0],p[1],p[2].toDouble(),p[3].toDouble())}.getOrNull()}
+ fun addGoal(g:SavingsGoal){val s=prefs.getStringSet("goals",emptySet()).orEmpty().toMutableSet();s.add(listOf(g.id,clean(g.name),g.target.toString(),g.saved.toString()).joinToString("¦"));prefs.edit().putStringSet("goals",s).apply()}
  fun removeFuture(id:String){val s=prefs.getStringSet("future",emptySet()).orEmpty().filterNot{it.startsWith(id+"¦")}.toSet();prefs.edit().putStringSet("future",s).apply()}
  private fun decodeFuture(s:String):FutureExpense?=runCatching{val p=s.split("¦");FutureExpense(p[0],p[1],p[2].toDouble(),p[3].toLong(),p[4],p[5].toBoolean())}.getOrNull()
  private fun encode(t:Transaction)=listOf(t.id,t.type.name,t.amount.toString(),clean(t.category),clean(t.note),t.timestamp.toString(),clean(t.source),clean(t.bank),clean(t.account)).joinToString("¦")
