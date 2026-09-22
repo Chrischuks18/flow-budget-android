@@ -34,20 +34,41 @@ object StatementImporter{
   }.onFailure{skipped++}}
   return Result(imported,skipped,"Imported "+imported+" statement records. "+skipped+" duplicate or unreadable rows were skipped.",bank)
  }
- fun purpose(text:String,type:TxType):String{val s=text.lowercase();return when{
-  type==TxType.INCOME&&(listOf("salary","payroll","wage","allowance").any{s.contains(it)})->"Salary"
-  type==TxType.INCOME&&(listOf("interest","dividend","refund","reversal").any{s.contains(it)})->"Income / Refund"
-  listOf("airtime","data","mtn","airtel","glo","9mobile").any{s.contains(it)}->"Airtime & Data"
-  listOf("uber","bolt","taxi","transport","fuel","petrol","filling station").any{s.contains(it)}->"Transport"
-  listOf("restaurant","food","eatery","cafe","chicken","pizza","grocer","supermarket").any{s.contains(it)}->"Food & Groceries"
-  listOf("electric","nepa","ekedc","ikedc","enugu disco","water","utility","dstv","gotv","startimes").any{s.contains(it)}->"Bills & Utilities"
-  listOf("netflix","spotify","prime","subscription","renewal").any{s.contains(it)}->"Subscriptions"
-  listOf("atm","cash withdrawal","withdrawal").any{s.contains(it)}->"Cash"
-  listOf("fee","charge","levy","vat","stamp duty").any{s.contains(it)}->"Bank Charges"
-  listOf("pos","purchase","merchant","shop","store").any{s.contains(it)}->"Shopping"
-  listOf("transfer","trf","sent to","payment to").any{s.contains(it)}->if(type==TxType.INCOME)"Transfer In" else "Transfer Out"
-  type==TxType.INCOME->"Other Income"
-  else->"Other Expense"}}
+ fun purpose(text:String,type:TxType):String{
+  val s=text.lowercase().replace(Regex("[^a-z0-9 ]")," ")
+  fun has(vararg words:String)=words.any{s.contains(it)}
+  return when{
+   type==TxType.INCOME&&has("salary","payroll","wage","allowance","stipend")->"Salary & Allowance"
+   type==TxType.INCOME&&has("refund","reversal","reversed","chargeback")->"Refunds & Reversals"
+   type==TxType.INCOME&&has("interest","dividend","investment return")->"Investment Income"
+   has("mtn","airtel","glo","9mobile","airtime","data bundle","data purchase")->"Airtime & Data"
+   has("uber","bolt","indrive","taxi","transport","bus ticket","flight","air peace","arik","fuel","petrol","diesel","filling station","total energies","nnpc","mobil station")->"Transport & Fuel"
+   has("restaurant","eatery","cafe","coffee","chicken republic","kfc","dominos","pizza","food","grocer","supermarket","shoprite","market","provision")->"Food & Groceries"
+   has("ikeja electric","ikedc","eko electric","ekedc","eedc","enugu electricity","nepa","electricity","prepaid meter","water bill","utility","dstv","gotv","startimes","internet bill","wifi")->"Bills & Utilities"
+   has("netflix","spotify","youtube premium","apple com bill","google storage","prime video","showmax","subscription","renewal")->"Subscriptions"
+   has("hospital","clinic","pharmacy","chemist","medical","laboratory","lab test","health")->"Health & Medical"
+   has("school fees","tuition","university","college","academy","course","exam fee","waec","jamb")->"Education"
+   has("hotel","guest house","booking com","airbnb","lodge")->"Travel & Accommodation"
+   has("church","parish","tithe","offering","donation","charity")->"Giving & Donations"
+   has("rent","landlord","house rent","accommodation rent")->"Rent & Housing"
+   has("insurance","premium payment")->"Insurance"
+   has("atm withdrawal","cash withdrawal","cash wd","withdrawal at atm")->"Cash Withdrawal"
+   has("stamp duty","sms alert charge","maintenance fee","account maintenance","transfer fee","transaction fee","bank charge","vat on fee","levy")->"Bank Charges"
+   has("bet9ja","sportybet","betking","betway","gaming")->"Betting & Gaming"
+   has("pos","web purchase","card purchase","merchant payment","purchase at","shopping","boutique","store")->"Shopping & POS"
+   has("loan repayment","loan payment","credit repayment")->"Loan Repayment"
+   has("investment","mutual fund","treasury bill","stock purchase")->"Savings & Investments"
+   has("transfer","trf","nip","nibss","sent to","payment to","fund transfer")->if(type==TxType.INCOME)"Transfers In" else "Transfers Out"
+   type==TxType.INCOME->"Other Income"
+   else->"Other Expense"
+  }
+ }
+ fun purposeDetail(text:String,category:String):String{
+  val clean=text.replace(Regex("\\s+")," ").trim()
+  val markers=listOf("uber","bolt","indrive","mtn","airtel","glo","netflix","spotify","dstv","gotv","shoprite","chicken republic","kfc","dominos","air peace","showmax","amazon","google","apple","pharmacy","hospital","hotel","school","university","rent","fuel","petrol","diesel")
+  val found=markers.firstOrNull{clean.contains(it,true)}
+  return if(found!=null) found.split(" ").joinToString(" "){it.replaceFirstChar(Char::uppercaseChar)} else clean.take(90).ifBlank{category}
+ }
  private fun num(s:String)=s.replace(Regex("[^0-9.\\-]"),"").toDoubleOrNull()?:0.0
  private fun parseDate(s:String):Long{for(f in listOf("dd/MM/yyyy","dd-MM-yyyy","yyyy-MM-dd","dd MMM yyyy","MMM dd, yyyy"))runCatching{return SimpleDateFormat(f,Locale.US).parse(s)?.time?:System.currentTimeMillis()};return System.currentTimeMillis()}
  private fun split(line:String,sep:Char):List<String>{val out=mutableListOf<String>();val b=StringBuilder();var q=false;line.forEach{ch->when{ch=='"'->q=!q;ch==sep&&!q->{out+=b.toString();b.clear()};else->b.append(ch)}};out+=b.toString();return out}
