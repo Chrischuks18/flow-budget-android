@@ -71,8 +71,24 @@ object StatementImporter{
   for(i in 0 until rows.length){val cells=(rows.item(i) as org.w3c.dom.Element).getElementsByTagName("c");val row=mutableListOf<String>();for(j in 0 until cells.length){val ce=cells.item(j) as org.w3c.dom.Element;val ref=ce.getAttribute("r");val col=ref.takeWhile{it.isLetter()}.fold(0){a,ch->a*26+(ch.uppercaseChar()-'A'+1)}-1;while(row.size<=col)row.add("");val v=ce.getElementsByTagName("v");val raw=if(v.length>0)v.item(0).textContent else "";row[col]=if(ce.getAttribute("t")=="s")shared.getOrElse(raw.toIntOrNull()?:-1){raw}else raw};table+=row}
   return importTable(table,name,store)
  }
- private fun importTable(table:List<List<String>>,name:String,store:FinanceStore):Result{if(table.isEmpty())return Result(0,0,"Excel statement is empty.");val headerIndex=table.indexOfFirst{r->r.any{it.lowercase().contains("date")}&&r.any{val x=it.lowercase();x.contains("debit")||x.contains("credit")||x.contains("amount")}}.let{if(it<0)0 else it};val h=table[headerIndex].map{it.lowercase()};fun idx(vararg n:String)=h.indexOfFirst{x->n.any{x.contains(it)}};val di=idx("date");val ni=idx("description","narration","details","remark","purpose");val db=idx("debit","withdrawal");val cr=idx("credit","deposit");val ai=idx("amount");val ac=idx("account","acct");val bank=detectBank(name);var imported=0;var skipped=0
-  table.drop(headerIndex+1).forEach{r->fun cell(i:Int)=if(i>=0&&i<r.size)r[i] else "";val debit=num(cell(db));val credit=num(cell(cr));val amount=num(cell(ai));val type=if(credit>0)TxType.INCOME else TxType.EXPENSE;val value=when{credit>0->credit;debit>0->debit;else->kotlin.math.abs(amount)};if(value<=0){skipped++;return@forEach};val note=cell(ni).ifBlank{"Excel statement transaction"};val t=Transaction(type=type,amount=value,category=purpose(note,type),note=note,timestamp=parseExcelDate(cell(di)),source="Statement • "+name,bank=bank,account=cell(ac).ifBlank{"Statement"});if(store.addIfNew(t))imported++ else skipped++}
+ private fun importTable(table:List<List<String>>,name:String,store:FinanceStore):Result{
+  if(table.isEmpty()) return Result(0,0,"Excel statement is empty.")
+  var headerIndex=table.indexOfFirst{row->row.any{cell->cell.lowercase().contains("date")} && row.any{cell->val v=cell.lowercase();v.contains("debit")||v.contains("credit")||v.contains("amount")}}
+  if(headerIndex<0) headerIndex=0
+  val headers=table[headerIndex].map{it.lowercase()}
+  fun findIndex(vararg names:String):Int=headers.indexOfFirst{header->names.any{key->header.contains(key)}}
+  val dateIndex=findIndex("date");val narrationIndex=findIndex("description","narration","details","remark","purpose");val debitIndex=findIndex("debit","withdrawal");val creditIndex=findIndex("credit","deposit");val amountIndex=findIndex("amount");val accountIndex=findIndex("account","acct");val bank=detectBank(name)
+  var imported=0;var skipped=0
+  for(row in table.drop(headerIndex+1)){
+   fun cell(index:Int):String=if(index>=0&&index<row.size)row[index] else ""
+   val debit=num(cell(debitIndex));val credit=num(cell(creditIndex));val amount=num(cell(amountIndex))
+   val type=if(credit>0)TxType.INCOME else TxType.EXPENSE
+   val value=when{credit>0->credit;debit>0->debit;else->kotlin.math.abs(amount)}
+   if(value<=0){skipped++;continue}
+   val note=cell(narrationIndex).ifBlank{"Excel statement transaction"}
+   val transaction=Transaction(type=type,amount=value,category=purpose(note,type),note=note,timestamp=parseExcelDate(cell(dateIndex)),source="Statement • "+name,bank=bank,account=cell(accountIndex).ifBlank{"Statement"})
+   if(store.addIfNew(transaction)) imported++ else skipped++
+  }
   return Result(imported,skipped,"Excel analyzed: "+imported+" transactions imported.",bank)
  }
  private fun xmlStrings(bytes:ByteArray):List<String>{val d=DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(ByteArrayInputStream(bytes));val nodes=d.getElementsByTagName("si");return (0 until nodes.length).map{i->nodes.item(i).textContent}}
