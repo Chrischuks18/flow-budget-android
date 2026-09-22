@@ -118,10 +118,10 @@ object StatementImporter{
   return Result(imported,skipped,bank+" PDF analyzed with "+layout+" parsing: "+imported+" transactions imported. Narrations were retained for spending analysis.",bank,account)
  }
  private fun findOpeningBalance(text:String,moneyRx:Regex):Double?{
+  val line=text.lines().firstOrNull{it.contains("Opening Balance",true)}
+  if(line!=null){val values=moneyRx.findAll(line).map{num(it.groupValues[1])}.toList();if(values.isNotEmpty())return values.last()}
   val r=Regex("""(?i)opening\s+balance\s*[:\-]?\s*(?:NGN|₦)?\s*([0-9,]+\.\d{2})""").find(text)
-  if(r!=null)return num(r.groupValues[1])
-  val line=text.lines().firstOrNull{it.contains("Opening Balance",true)}?:return null
-  return moneyRx.findAll(line).map{num(it.groupValues[1])}.lastOrNull()
+  return r?.groupValues?.getOrNull(1)?.let{num(it)}
  }
  private fun isPdfFooter(line:String):Boolean{val s=line.lowercase();return s.matches(Regex("""\d+\s+of\s+\d+"""))||s.contains("alertz verification")||s.contains("how to verify")}
  private fun cleanPdfNarration(raw:String,date:String,moneyRx:Regex):String{
